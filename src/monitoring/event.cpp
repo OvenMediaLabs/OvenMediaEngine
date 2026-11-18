@@ -240,7 +240,13 @@ namespace mon
 
 	bool Event::FillProducer(Json::Value &jsonProducer, const std::shared_ptr<StreamMetrics> &stream_metric) const
 	{
-		FillProducer(jsonProducer, stream_metric->GetApplicationMetrics());
+		auto app_metric = stream_metric->GetApplicationMetrics();
+		if (app_metric == nullptr)
+		{
+			return false;
+		}
+
+		FillProducer(jsonProducer, app_metric);
 		jsonProducer["streamID"] = stream_metric->GetUUID().CStr();
 		return true;
 	}
@@ -305,6 +311,11 @@ namespace mon
 	bool Event::FillHostAppStreamInfo(Json::Value &json_host, const std::shared_ptr<StreamMetrics> &stream_metric) const
 	{
 		auto app_metric = stream_metric->GetApplicationMetrics();
+		if (app_metric == nullptr)
+		{
+			return false;
+		}
+
 		FillHostAppInfo(json_host, app_metric);
 
 		Json::Value &json_stream   = json_host["app"]["stream"];

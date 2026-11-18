@@ -78,7 +78,7 @@ namespace mon
 		auto origin_stream_info = GetLinkedInputStream();
 		if (origin_stream_info != nullptr)
 		{
-			auto origin_stream_metric = _app_metrics->GetStreamMetrics(*origin_stream_info);
+			auto origin_stream_metric = FindStreamMetrics(*origin_stream_info);
 			if (origin_stream_metric != nullptr)
 			{
 				origin_stream_metric->IncreaseBytesIn(value);
@@ -94,7 +94,7 @@ namespace mon
 		auto origin_stream_info = GetLinkedInputStream();
 		if (origin_stream_info != nullptr)
 		{
-			auto origin_stream_metric = _app_metrics->GetStreamMetrics(*origin_stream_info);
+			auto origin_stream_metric = FindStreamMetrics(*origin_stream_info);
 			if (origin_stream_metric != nullptr)
 			{
 				origin_stream_metric->IncreaseBytesOut(type, value);
@@ -105,7 +105,7 @@ namespace mon
 	void StreamMetrics::IncreaseModuleUsageCount(const std::shared_ptr<const MediaTrack> &media_track)
 	{
 		// Holds the `shared_ptr` to prevent it from being released while in use
-		auto app_metrics  = _app_metrics;
+		auto app_metrics  = GetApplicationMetrics();
 		auto host_metrics = (app_metrics != nullptr) ? app_metrics->GetHostMetrics() : nullptr;
 
 		if ((media_track == nullptr) || (app_metrics == nullptr) || (host_metrics == nullptr))
@@ -138,7 +138,7 @@ namespace mon
 	void StreamMetrics::DecreaseModuleUsageCount(const std::shared_ptr<const MediaTrack> &media_track)
 	{
 		// Holds the `shared_ptr` to prevent it from being released while in use
-		auto app_metrics  = _app_metrics;
+		auto app_metrics  = GetApplicationMetrics();
 		auto host_metrics = (app_metrics != nullptr) ? app_metrics->GetHostMetrics() : nullptr;
 
 		if ((media_track == nullptr) || (app_metrics == nullptr) || (host_metrics == nullptr))
@@ -176,7 +176,7 @@ namespace mon
 		auto origin_stream_info = GetLinkedInputStream();
 		if (origin_stream_info != nullptr)
 		{
-			auto origin_stream_metric = _app_metrics->GetStreamMetrics(*origin_stream_info);
+			auto origin_stream_metric = FindStreamMetrics(*origin_stream_info);
 			if (origin_stream_metric != nullptr)
 			{
 				origin_stream_metric->OnSessionConnected(type);
@@ -186,7 +186,7 @@ namespace mon
 		{
 			logti("A new session has started playing %s/%s on the %s publisher. %s(%" PRIu64 ")/Stream total(%u)/App total(%u)",
 				  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(),
-				  ::StringFromPublisherType(type).CStr(), ::StringFromPublisherType(type).CStr(), GetConnections(type), GetTotalConnections(), GetApplicationMetrics()->GetTotalConnections());
+				  ::StringFromPublisherType(type).CStr(), ::StringFromPublisherType(type).CStr(), GetConnections(type), GetTotalConnections(), GetAppTotalConnections());
 		}
 	}
 
@@ -198,7 +198,7 @@ namespace mon
 		auto origin_stream_info = GetLinkedInputStream();
 		if (origin_stream_info != nullptr)
 		{
-			auto origin_stream_metric = _app_metrics->GetStreamMetrics(*origin_stream_info);
+			auto origin_stream_metric = FindStreamMetrics(*origin_stream_info);
 			if (origin_stream_metric != nullptr)
 			{
 				origin_stream_metric->OnSessionDisconnected(type);
@@ -208,7 +208,7 @@ namespace mon
 		{
 			logti("A session has been stopped playing %s/%s on the %s publisher. Concurrent Viewers[%s(%" PRIu64 ")/Stream total(%u)/App total(%u)]",
 				  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(),
-				  ::StringFromPublisherType(type).CStr(), ::StringFromPublisherType(type).CStr(), GetConnections(type), GetTotalConnections(), GetApplicationMetrics()->GetTotalConnections());
+				  ::StringFromPublisherType(type).CStr(), ::StringFromPublisherType(type).CStr(), GetConnections(type), GetTotalConnections(), GetAppTotalConnections());
 		}
 	}
 
@@ -225,7 +225,7 @@ namespace mon
 		auto origin_stream_info = GetLinkedInputStream();
 		if (origin_stream_info != nullptr)
 		{
-			auto origin_stream_metric = _app_metrics->GetStreamMetrics(*origin_stream_info);
+			auto origin_stream_metric = FindStreamMetrics(*origin_stream_info);
 			if (origin_stream_metric != nullptr)
 			{
 				origin_stream_metric->OnSessionsDisconnected(type, number_of_sessions);
@@ -236,8 +236,20 @@ namespace mon
 			logti("%" PRIu64 " sessions has been stopped playing %s/%s on the %s publisher. Concurrent Viewers[%s(%" PRIu64 ")/Stream total(%u)/App total(%u)]",
 				  number_of_sessions,
 				  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(),
-				  ::StringFromPublisherType(type).CStr(), ::StringFromPublisherType(type).CStr(), GetConnections(type), GetTotalConnections(), GetApplicationMetrics()->GetTotalConnections());
+				  ::StringFromPublisherType(type).CStr(), ::StringFromPublisherType(type).CStr(), GetConnections(type), GetTotalConnections(), GetAppTotalConnections());
 		}
+	}
+
+	std::shared_ptr<StreamMetrics> StreamMetrics::FindStreamMetrics(const info::Stream &stream) const
+	{
+		auto app_metrics = GetApplicationMetrics();
+		return (app_metrics != nullptr) ? app_metrics->GetStreamMetrics(stream) : nullptr;
+	}
+
+	uint32_t StreamMetrics::GetAppTotalConnections() const
+	{
+		auto app_metrics = GetApplicationMetrics();
+		return (app_metrics != nullptr) ? app_metrics->GetTotalConnections() : 0;
 	}
 
 }  // namespace mon
