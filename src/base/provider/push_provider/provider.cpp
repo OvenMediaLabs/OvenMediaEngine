@@ -161,12 +161,21 @@ namespace pvd
 		// Delete from stream_mold
 		std::unique_lock<std::shared_mutex> lock(_channels_lock);
 		
-		if(_channels.erase(channel->GetChannelId()) == 0)
+		auto item = _channels.find(channel->GetChannelId());
+		if (item == _channels.end())
 		{
 			// probabliy, it was removed 
 			logte("%" PRIu64 " channel to be deleted cannot be found", channel->GetChannelId().GetValue());
 			return false;
 		}
+
+		// The ID may name a newer channel, since the channels of a UDP port share the ID of its socket
+		if (item->second != channel)
+		{
+			return false;
+		}
+
+		_channels.erase(item);
 
 		lock.unlock();
 
