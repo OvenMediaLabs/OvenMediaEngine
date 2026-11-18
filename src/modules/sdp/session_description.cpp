@@ -141,16 +141,6 @@ bool SessionDescription::FromString(const ov::String &sdp)
 		else if(media_level == true)
 		{
 			media_desc_sdp.AppendFormat("%s\n", line.c_str());
-
-			if(sdpstream.rdbuf()->in_avail() == 0)
-			{
-				auto media_desc = std::make_shared<MediaDescription>();
-				if(media_desc->FromString(media_desc_sdp) == false)
-				{
-					return false;
-				}
-				AddMedia(media_desc);
-			}
 		}
 		else
 		{
@@ -159,6 +149,18 @@ bool SessionDescription::FromString(const ov::String &sdp)
 				return false;
 			}
 		}
+	}
+
+	// The last media section has no following "m=" line to close it: add it here, after the loop, so that trailing
+	// lines that are not SDP fields (such as an empty line after the last attribute) cannot drop it
+	if(media_level == true)
+	{
+		auto media_desc = std::make_shared<MediaDescription>();
+		if(media_desc->FromString(media_desc_sdp) == false)
+		{
+			return false;
+		}
+		AddMedia(media_desc);
 	}
 
 	Update();
