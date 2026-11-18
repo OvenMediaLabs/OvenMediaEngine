@@ -179,6 +179,8 @@ protected:
 		info::Stream stream_info(*app_info, StreamSourceType::Ovt);
 		stream_info.SetName("stream");
 		stream_info.AddTrack(track);
+		// Like every publisher stream in production, it is linked to its input stream
+		stream_info.LinkInputStream(std::make_shared<info::Stream>(*app_info, StreamSourceType::Ovt));
 
 		stream = LLHlsStream::Create(app, stream_info, true, 0);
 		ASSERT_TRUE(stream->EnterStart());

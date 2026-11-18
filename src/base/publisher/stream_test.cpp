@@ -23,12 +23,23 @@ namespace
 		using info::Application::GetInvalidApplication;
 	};
 
+	// A session reads its ids from the stream's application info, so the stream carries one.
+	// Like every publisher stream in production, it is linked to its input stream.
+	info::Stream MakeOutputStreamInfo()
+	{
+		const auto &app_info = TestApplicationInfo::GetInvalidApplication();
+
+		info::Stream stream_info(app_info, StreamSourceType::Ovt);
+		stream_info.LinkInputStream(std::make_shared<info::Stream>(app_info, StreamSourceType::Ovt));
+
+		return stream_info;
+	}
+
 	class StopHookStream : public pub::Stream
 	{
 	public:
-		// A session reads its ids from the stream's application info, so the stream carries one
 		StopHookStream()
-			: pub::Stream(nullptr, info::Stream(TestApplicationInfo::GetInvalidApplication(), StreamSourceType::Ovt))
+			: pub::Stream(nullptr, MakeOutputStreamInfo())
 		{
 		}
 
