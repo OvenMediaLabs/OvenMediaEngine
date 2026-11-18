@@ -4,6 +4,7 @@
 //
 //  Covers: IceSession nomination / active-pair selection
 //  (MarkNominated, SelectActiveCandidatePair, IsActive)
+//  and triggered-check rate limiting (ShouldSendTriggeredCheck)
 //
 //==============================================================================
 #include <gtest/gtest.h>
@@ -165,4 +166,34 @@ TEST(IceSessionNomination, RejectFailedOrUnknownWhileActive)
 	EXPECT_FALSE(session->SelectActiveCandidatePair(b));
 	EXPECT_TRUE(session->IsActive(a));
 	EXPECT_EQ(session->GetState(), IceConnectionState::Connected);
+}
+
+// Unlimited until the pair succeeds, then rate-limited
+TEST(IceSessionTriggeredCheck, RateLimitedOnlyAfterSuccess)
+{
+	auto session = MakeSession();
+	auto a		 = MakePair(10000, 20000);
+	auto u		 = MakePair(10001, 20001);	 // never seen
+
+	EXPECT_TRUE(session->ShouldSendTriggeredCheck(u));
+
+	Validate(session, a);
+	EXPECT_TRUE(session->ShouldSendTriggeredCheck(a));
+	EXPECT_TRUE(session->ShouldSendTriggeredCheck(a));
+
+	session->OnReceivedStunBindingResponse(a, nullptr);
+	ASSERT_TRUE(session->IsConnectable(a));
+	EXPECT_TRUE(session->ShouldSendTriggeredCheck(a));
+	EXPECT_FALSE(session->ShouldSendTriggeredCheck(a));
+}
+
+TEST(IceSessionTriggeredCheck, TryClaimTriggeredCheckInterval)
+{
+	IceCandidatePair pair(MakePair(10000, 20000), nullptr);
+
+	EXPECT_TRUE(pair.TryClaimTriggeredCheck(/*now_ms=*/5000, /*interval_ms=*/1000));
+	EXPECT_FALSE(pair.TryClaimTriggeredCheck(5000, 1000));
+	EXPECT_FALSE(pair.TryClaimTriggeredCheck(5999, 1000));
+	EXPECT_TRUE(pair.TryClaimTriggeredCheck(6000, 1000));
+	EXPECT_FALSE(pair.TryClaimTriggeredCheck(6500, 1000));
 }
