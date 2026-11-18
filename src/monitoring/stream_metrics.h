@@ -29,12 +29,12 @@ namespace mon
 		~StreamMetrics()
 		{
 			logt("DEBUG", "StreamMetric (%s / %s) Destroyed", GetName().CStr(), GetUUID().CStr());
-			_app_metrics.reset();
 		}
 
-		std::shared_ptr<ApplicationMetrics> GetApplicationMetrics()
+		// Returns nullptr once the application metrics have been deleted
+		std::shared_ptr<ApplicationMetrics> GetApplicationMetrics() const
 		{
-			return _app_metrics;
+			return _app_metrics.lock();
 		}
 
 		ov::String GetInfoString(bool show_children = true) override;
@@ -63,6 +63,10 @@ namespace mon
 		void OnSessionsDisconnected(PublisherType type, uint64_t number_of_sessions) override;
 
 	private:
+		std::shared_ptr<StreamMetrics> FindStreamMetrics(const info::Stream &stream) const;
+		uint32_t GetAppTotalConnections() const;
+
+	private:
 		// Related to origin, From Provider
 		std::atomic<int64_t> _connection_time_to_origin_msec  = 0;
 		std::atomic<int64_t> _subscribe_time_from_origin_msec = 0;
@@ -71,7 +75,8 @@ namespace mon
 		mutable ov::SharedMutex _output_stream_metrics_mutex;
 		std::vector<std::shared_ptr<StreamMetrics>> _output_stream_metrics OV_GUARDED_BY(_output_stream_metrics_mutex);
 
-		std::shared_ptr<ApplicationMetrics> _app_metrics;
+		// Weak so that the application metrics, which own this object, are released when removed from the host
+		std::weak_ptr<ApplicationMetrics> _app_metrics;
 
 		ov::Mutex _module_usage_count_map_mutex;
 		std::unordered_map<MediaTrackId, std::shared_ptr<const MediaTrack>> _module_usage_count_map OV_GUARDED_BY(_module_usage_count_map_mutex);
