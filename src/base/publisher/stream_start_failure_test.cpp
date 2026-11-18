@@ -195,6 +195,8 @@ TEST(PublisherStreamStartFailureTest, FailedStartReleasesWorkersAndSessions)
 
 	auto info = std::make_shared<info::Stream>(*application, StreamSourceType::Ovt);
 	info->SetName("start_failure");
+	// Like every publisher stream in production, it is linked to its input stream
+	info->LinkInputStream(std::make_shared<info::Stream>(*application, StreamSourceType::Ovt));
 
 	ASSERT_TRUE(application->OnStreamCreated(info));
 	auto stream = application->GetLastCreatedStream();
