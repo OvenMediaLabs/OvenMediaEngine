@@ -72,7 +72,7 @@ private:
     bool _received_binding_request = false;
     bool _received_binding_response = false;
 
-	std::atomic<int64_t> _last_check_ms{-1};
+	std::atomic<int64_t> _last_triggered_check_ms{-1};
 
 	std::atomic<TransportType> _transport_type{TransportType::Direct};
 	std::atomic<uint16_t> _turn_channel_number{0};

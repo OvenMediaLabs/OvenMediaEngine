@@ -188,7 +188,7 @@ TEST(IceSessionTriggeredCheck, RateLimitedOnlyAfterSuccess)
 	EXPECT_FALSE(session->TryClaimTriggeredCheck(a));
 }
 
-TEST(IceSessionTriggeredCheck, TryClaimTriggeredCheckInterval)
+TEST(IceCandidatePairTriggeredCheck, Interval)
 {
 	IceCandidatePair pair(MakePair(10000, 20000), nullptr);
 

@@ -71,13 +71,13 @@ bool IceCandidatePair::IsConnectable() const
 
 bool IceCandidatePair::TryClaimTriggeredCheck(int64_t now_ms, int64_t interval_ms)
 {
-	auto last = _last_check_ms.load();
+	auto last = _last_triggered_check_ms.load();
 	if ((last >= 0) && (now_ms - last < interval_ms))
 	{
 		return false;
 	}
 
-	return _last_check_ms.compare_exchange_strong(last, now_ms);
+	return _last_triggered_check_ms.compare_exchange_strong(last, now_ms);
 }
 
 void IceCandidatePair::SetTurnDataChannel(uint16_t channel_number)
