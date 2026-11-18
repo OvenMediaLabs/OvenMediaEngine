@@ -12,6 +12,9 @@
 #include <modules/physical_port/physical_port_manager.h>
 #include <orchestrator/orchestrator.h>
 
+#include <chrono>
+#include <thread>
+
 #include "mpegts_application.h"
 #include "mpegts_provider_private.h"
 #include "mpegts_stream.h"
@@ -303,18 +306,78 @@ namespace pvd
 
 	bool MpegTsProvider::OnDeleteProviderApplication(const std::shared_ptr<Application> &application)
 	{
-		std::shared_lock<std::shared_mutex> lock(_stream_port_map_lock);
+		std::vector<channel_id_t> client_id_list;
 
-		for (const auto &item : _stream_port_map)
 		{
-			auto &stream_port_item = item.second;
-			if (stream_port_item->GetVhostAppName() == application->GetVHostAppName())
+			std::shared_lock<std::shared_mutex> lock(_stream_port_map_lock);
+
+			for (const auto &item : _stream_port_map)
 			{
-				stream_port_item->DetachFromApplication();
+				auto &stream_port_item = item.second;
+				const auto attachment  = stream_port_item->GetAttachment();
+				if (attachment.attached && (attachment.vhost_app_name == application->GetVHostAppName()))
+				{
+					auto client_id = stream_port_item->DetachFromApplication();
+					if (client_id != channel_id_t{})
+					{
+						client_id_list.push_back(client_id);
+					}
+				}
 			}
 		}
 
-		return PushProvider::OnDeleteProviderApplication(application);
+		auto result = PushProvider::OnDeleteProviderApplication(application);
+
+		// Waiting for a channel blocks every application create and delete, so all ports share one bound
+		constexpr auto WAIT_LIMIT = std::chrono::seconds(3);
+		const auto deadline		  = std::chrono::steady_clock::now() + WAIT_LIMIT;
+
+		// `PushProvider::OnDeleteProviderApplication()` deletes only the channels that joined the application.
+		// A port's channel that has not published yet is deleted here,
+		// or it would keep its ID and the port could not register it again.
+		for (const auto &client_id : client_id_list)
+		{
+			DeleteUnpublishedChannel(client_id, deadline);
+		}
+
+		return result;
+	}
+
+	void MpegTsProvider::DeleteUnpublishedChannel(channel_id_t channel_id, std::chrono::steady_clock::time_point deadline)
+	{
+		// An `OnDataReceived()` that is inside the channel may complete PAT/PMT and publish it.
+		// After the application is recreated, it would join the new one by name with no entry in `_channels`,
+		// and nothing would ever delete it.
+		// Application create and delete are serialized, so no recreated application exists during the wait,
+		// and a reserved channel takes no more data.
+		// A channel still in use at `deadline` stays in `_channels`.
+		// If the call publishes it into a recreated application, it receives nothing from the port,
+		// and the silence timeout deletes it.
+		while (true)
+		{
+			// The port is detached, so no newer channel can take this ID while this runs.
+			// A missing channel was already deleted: a published one with the application,
+			// or by the timeout, which reserves it the same way.
+			auto channel = GetChannel(channel_id);
+			if (channel == nullptr)
+			{
+				return;
+			}
+
+			if (channel->TryBeginReaping(channel->GetSilenceState()))
+			{
+				PushProvider::OnChannelDeleted(channel);
+				return;
+			}
+
+			if (std::chrono::steady_clock::now() >= deadline)
+			{
+				logtw("Channel %" PRIu64 " is still receiving data, leaving it to the silence timeout", channel_id.GetValue());
+				return;
+			}
+
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
 	}
 
 	std::shared_ptr<MpegTsStreamPortItem> MpegTsProvider::GetStreamPortItem(uint16_t local_port)
@@ -339,7 +402,10 @@ namespace pvd
 			return;
 		}
 
-		OnConnected(remote, ov::SocketAddressPair(*remote->GetLocalAddress(), *remote->GetRemoteAddress()));
+		if (OnConnected(remote, ov::SocketAddressPair(*remote->GetLocalAddress(), *remote->GetRemoteAddress())) == false)
+		{
+			remote->Close();
+		}
 	}
 
 	bool MpegTsProvider::OnConnected(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair)
@@ -348,24 +414,58 @@ namespace pvd
 		auto channel_id		  = GetChannelId(remote);
 
 		auto stream_port_item = GetStreamPortItem(local_port);
-		if (stream_port_item == nullptr || stream_port_item->IsAttached() == false)
+		if (stream_port_item == nullptr)
+		{
+			return false;
+		}
+
+		const auto attachment = stream_port_item->GetAttachment();
+		if (attachment.attached == false)
+		{
+			return false;
+		}
+
+		// The port takes one client at a time:
+		// another TCP connection, or a sender on its other socket (IPv4/IPv6), is refused.
+		if (stream_port_item->GetClientId() != channel_id_t{})
+		{
+			return false;
+		}
+
+		// A channel that still holds this ID refuses the registration below,
+		// so this skips building a stream that would only be thrown away.
+		if (GetChannel(channel_id) != nullptr)
 		{
 			return false;
 		}
 
 		auto stream = MpegTsStream::Create(
 			StreamSourceType::Mpegts, channel_id,
-			stream_port_item->GetVhostAppName(), stream_port_item->GetOutputStreamName(),
+			attachment.vhost_app_name, attachment.stream_name,
 			remote, address_pair, 0, GetSharedPtrAs<PushProvider>());
 
-		if (PushProvider::OnChannelCreated(channel_id, stream) == true)
-		{
-			logti("A MPEG-TS client has connected");  // %s", remote->ToString().CStr());
-			stream_port_item->OnClientConnected(channel_id);
+		// A timed-out channel keeps its ID until it is deleted, so the ID may still be registered.
+		// Only this port registers the IDs of its sockets, and `ConnectClient()` holds the port's lock here,
+		// so an ID found free stays free until this channel is registered.
+		auto register_channel = [&]() {
+			return (GetChannel(channel_id) == nullptr) && PushProvider::OnChannelCreated(channel_id, stream);
+		};
 
-			// Apply the configured `PacketSilenceTimeoutMs` to the pre-publish window,
-			// now that the application is known.
-			stream->ApplyConfiguredPacketSilenceTimeoutMs(stream_port_item->GetVhostAppName());
+		// Fails while the port is taken, the attachment has changed, or the ID is still registered.
+		// A later datagram tries again; a TCP connection is closed.
+		if (stream_port_item->ConnectClient(channel_id, attachment.generation, register_channel) == false)
+		{
+			return false;
+		}
+
+		logti("A MPEG-TS client has connected");  // %s", remote->ToString().CStr());
+
+		// Apply the configured `PacketSilenceTimeoutMs` to the pre-publish window, now that the application is known.
+		// `JoinStream()` replaces the timeout when the stream publishes.
+		stream->ApplyConfiguredPacketSilenceTimeoutMs(attachment.vhost_app_name);
+		if (stream->GetPacketSilenceTimeoutMs() == 0)
+		{
+			stream->SetPacketSilenceTimeoutMs(PRE_PUBLISH_PACKET_SILENCE_TIMEOUT_MS);
 		}
 
 		return true;
@@ -386,7 +486,7 @@ namespace pvd
 		}
 
 		// UDP
-		if (stream_port_item->IsClientConnected() == false)
+		if (stream_port_item->GetClientId() != channel_id)
 		{
 			if (OnConnected(remote, address_pair) == false)
 			{
@@ -413,7 +513,11 @@ namespace pvd
 			return;
 		}
 
-		stream_port_item->OnClientDisconnected();
+		const auto channel_id = channel->GetChannelId();
+
+		// A UDP port's channels share the ID of its socket, so a channel deleted with its application
+		// may time out after a newer channel took the port with the same ID.
+		stream_port_item->DisconnectClient(channel_id, [&]() { return GetChannel(channel_id) == channel; });
 	}
 
 	// This function is not called by PhysicalPort when the protocol is udp (MPEGTS/UDP)
@@ -421,10 +525,12 @@ namespace pvd
 										PhysicalPortDisconnectReason reason,
 										const std::shared_ptr<const ov::Error> &error)
 	{
-		auto channel = GetChannel(GetChannelId(remote));
+		const auto channel_id = GetChannelId(remote);
+		const auto channel	  = GetChannel(channel_id);
 		if (channel == nullptr)
 		{
-			logte("Failed to find channel to delete stream (remote : ");  //%s)", remote->ToString().CStr());
+			// It was probably rejected in `OnConnected()`
+			logtt("Failed to find channel to delete stream (remote : %s)", remote->ToString().CStr());
 			return;
 		}
 
@@ -432,6 +538,12 @@ namespace pvd
 			  channel->GetApplicationName(), channel->GetName().CStr());
 		//remote->ToString().CStr());
 
-		PushProvider::OnChannelDeleted(GetChannelId(remote));
+		PushProvider::OnChannelDeleted(channel);
+
+		auto stream_port_item = GetStreamPortItem(remote->GetLocalAddress()->Port());
+		if (stream_port_item != nullptr)
+		{
+			stream_port_item->DisconnectClient(channel_id);
+		}
 	}
 }  // namespace pvd

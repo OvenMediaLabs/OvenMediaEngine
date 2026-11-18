@@ -15,6 +15,8 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <chrono>
+#include <functional>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -26,7 +28,17 @@ namespace pvd
 	class MpegTsStreamPortItem
 	{
 	public:
-		// State : Init | Bound, Attached | Detached, Connected | Disconnected
+		// The application the port feeds, read in one piece
+		struct Attachment
+		{
+			bool attached = false;
+			// Changes on every attach and detach, so a channel built from an older attachment is not registered
+			uint64_t generation = 0;
+			info::VHostAppName vhost_app_name = info::VHostAppName::InvalidVHostAppName();
+			ov::String stream_name;
+		};
+
+		// State : Init | Bound, Attached | Detached, Connected (`GetClientId()` is not `0`) | Disconnected
 		MpegTsStreamPortItem(ov::SocketType scheme, uint16_t port, const std::vector<std::shared_ptr<PhysicalPort>> &physical_port_list)
 			: _scheme(scheme),
 			  _port(port),
@@ -44,14 +56,10 @@ namespace pvd
 			return _port;
 		}
 
-		const info::VHostAppName &GetVhostAppName()
+		Attachment GetAttachment() const
 		{
-			return _vhost_app_name;
-		}
-
-		const ov::String &GetOutputStreamName() const
-		{
-			return _stream_name;
+			std::scoped_lock lock(_state_mutex);
+			return _attachment;
 		}
 
 		std::vector<std::shared_ptr<PhysicalPort>> GetPhysicalPortList()
@@ -70,39 +78,61 @@ namespace pvd
 
 		void AttachToApplication(const info::VHostAppName &vhost_app_name, const ov::String &stream_name)
 		{
-			_attached = true;
-			_vhost_app_name = vhost_app_name;
-			_stream_name = stream_name;
+			std::scoped_lock lock(_state_mutex);
+
+			_attachment.vhost_app_name = vhost_app_name;
+			_attachment.stream_name	   = stream_name;
+			_attachment.generation++;
+			_attachment.attached = true;
 		}
 
-		void OnClientConnected(channel_id_t client_id)
+		// Gives the port to `client_id` once `register_channel()` has registered its channel.
+		// Fails while the port is detached or held, when `generation` is no longer current,
+		// or when the registration fails.
+		bool ConnectClient(channel_id_t client_id, uint64_t generation, const std::function<bool()> &register_channel)
 		{
-			_client_connected = true;
-			_client_id = client_id;
+			std::scoped_lock lock(_state_mutex);
+
+			if ((_attachment.attached == false) || (_attachment.generation != generation) ||
+				(_client_id.load() != channel_id_t{}) || (register_channel() == false))
+			{
+				return false;
+			}
+
+			_client_id.store(client_id);
+			return true;
 		}
 
-		void DetachFromApplication()
+		// Returns the ID of the channel that held the port, or `0`
+		channel_id_t DetachFromApplication()
 		{
-			_attached = false;
-			OnClientDisconnected();
+			std::scoped_lock lock(_state_mutex);
+
+			_attachment.generation++;
+			_attachment.attached = false;
+			return _client_id.exchange(channel_id_t{});
 		}
 
-		void OnClientDisconnected()
+		// Frees the port only if `client_id` holds it and `is_owner()` agrees.
+		// No channel can take the port while `is_owner()` runs.
+		void DisconnectClient(channel_id_t client_id, const std::function<bool()> &is_owner = nullptr)
 		{
-			_client_connected = false;
+			std::scoped_lock lock(_state_mutex);
+
+			if ((_client_id.load() == client_id) && ((is_owner == nullptr) || is_owner()))
+			{
+				_client_id.store(channel_id_t{});
+			}
 		}
 
-		bool IsAttached()
+		bool IsAttached() const
 		{
-			return _attached.load();
+			std::scoped_lock lock(_state_mutex);
+			return _attachment.attached;
 		}
 
-		bool IsClientConnected()
-		{
-			return _client_connected.load();
-		}
-
-		channel_id_t GetClientId()
+		// The ID of the channel holding the port, or `0` while the port is free
+		channel_id_t GetClientId() const
 		{
 			return _client_id.load();
 		}
@@ -110,19 +140,24 @@ namespace pvd
 	private:
 		ov::SocketType _scheme = ov::SocketType::Udp;
 		uint16_t _port = 0;
-		info::VHostAppName _vhost_app_name = info::VHostAppName::InvalidVHostAppName();
-		ov::String _stream_name;
 		mutable std::mutex _physical_port_list_mutex;
 		std::vector<std::shared_ptr<PhysicalPort>> _physical_port_list;
 
-		std::atomic<bool> _attached = false;
-		std::atomic<bool> _client_connected = false;
+		// Attaching, detaching, taking, and freeing the port hold this,
+		// so neither the attachment nor the owner changes in between.
+		mutable std::mutex _state_mutex;
+		Attachment _attachment;
 		std::atomic<channel_id_t> _client_id{};
 	};
 
 	class MpegTsProvider : public PushProvider, protected PhysicalPortObserver
 	{
 	public:
+		// The silence timeout of a channel that has not published,
+		// unless the operator set a positive `PacketSilenceTimeoutMs`.
+		// UDP has no disconnect, so a sender that stops before completing PAT/PMT would otherwise hold the port forever.
+		static constexpr time_t PRE_PUBLISH_PACKET_SILENCE_TIMEOUT_MS = 3000;
+
 		static std::shared_ptr<MpegTsProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 
 		explicit MpegTsProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
@@ -167,6 +202,9 @@ namespace pvd
 		// and starts listening. Called from `Bind()`.
 		bool BindMpegTSPorts();
 
+		// Protected so a test can check which channel holds a port
+		std::shared_ptr<MpegTsStreamPortItem> GetStreamPortItem(uint16_t local_port);
+
 		//--------------------------------------------------------------------
 		// Implementation of Provider's virtual functions
 		//--------------------------------------------------------------------
@@ -195,8 +233,12 @@ namespace pvd
 							const std::shared_ptr<const ov::Error> &error) override;
 
 	private:
-		std::shared_ptr<MpegTsStreamPortItem> GetStreamPortItem(uint16_t local_port);
 		std::shared_ptr<MpegTsStreamPortItem> GetDetachedStreamPortItem();
+
+		// Deletes the channel that held a port of a deleted application, once no `OnDataReceived()` is inside it.
+		// The channel is reserved for deletion first, so a call that was inside cannot publish it afterwards.
+		// A channel still in use at `deadline` is left in `_channels`, where the silence timeout deletes it.
+		void DeleteUnpublishedChannel(channel_id_t channel_id, std::chrono::steady_clock::time_point deadline);
 
 		std::shared_mutex _stream_port_map_lock;
 		std::map<uint16_t, std::shared_ptr<MpegTsStreamPortItem>> _stream_port_map;
