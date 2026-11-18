@@ -1320,12 +1320,16 @@ bool IcePort::OnReceivedStunBindingRequest(const std::shared_ptr<ov::Socket> &re
 		return false;
 	}
 
-	// Always answer with our own binding request (ICE triggered check), even
+	// Answer with our own binding request (ICE triggered check), even
 	// when already connected on another pair, so every pair the peer keeps
 	// checking stays a viable fallback it can switch to. For CONTROLLING this
 	// also re-advertises USE-CANDIDATE. The active pair is decided by where
 	// the peer actually sends data (SelectActiveCandidatePair).
-	SendStunBindingRequest(remote, address_pair, gate_info, ice_session);
+	// Rate-limited: a peer doing the same (pion ice v2.3.x) ping-pongs with us.
+	if (ice_session->TryClaimTriggeredCheck(address_pair))
+	{
+		SendStunBindingRequest(remote, address_pair, gate_info, ice_session);
+	}
 
 	return true;
 }

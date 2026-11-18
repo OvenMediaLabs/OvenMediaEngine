@@ -282,6 +282,19 @@ bool IceSession::IsConnectable(const ov::SocketAddressPair& address_pair)
 	return candidate_pair->IsConnectable();
 }
 
+bool IceSession::TryClaimTriggeredCheck(const ov::SocketAddressPair& address_pair)
+{
+	auto candidate_pair = FindCandidatePair(address_pair);
+	if (candidate_pair == nullptr || candidate_pair->IsConnectable() == false)
+	{
+		return true;
+	}
+
+	// Shorter than peers' check periods (libwebrtc 2.5 s, Firefox ~5 s, pion 2 s)
+	constexpr int64_t TRIGGERED_CHECK_INTERVAL_MS = 1000;
+	return candidate_pair->TryClaimTriggeredCheck(ov::Time::GetMonotonicTimestamp(), TRIGGERED_CHECK_INTERVAL_MS);
+}
+
 bool IceSession::IsActive(const ov::SocketAddressPair& address_pair)
 {
 	auto active_candidate_pair = GetActiveCandidatePair();
