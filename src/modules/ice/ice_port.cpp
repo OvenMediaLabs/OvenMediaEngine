@@ -1325,8 +1325,7 @@ bool IcePort::OnReceivedStunBindingRequest(const std::shared_ptr<ov::Socket> &re
 	// checking stays a viable fallback it can switch to. For CONTROLLING this
 	// also re-advertises USE-CANDIDATE. The active pair is decided by where
 	// the peer actually sends data (SelectActiveCandidatePair).
-	// Rate-limited once the pair succeeded: a peer doing the same
-	// (pion ice v2.3.x) would ping-pong with us at 1/RTT.
+	// Rate-limited: a peer doing the same (pion ice v2.3.x) ping-pongs with us.
 	if (ice_session->TryClaimTriggeredCheck(address_pair))
 	{
 		SendStunBindingRequest(remote, address_pair, gate_info, ice_session);

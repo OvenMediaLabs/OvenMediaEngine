@@ -74,8 +74,7 @@ public:
 	void OnReceivedStunBindingErrorResponse(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket);
 
 	bool IsConnectable(const ov::SocketAddressPair& address_pair);
-	// True until the pair is connectable, then at most once per interval;
-	// a true result counts as sent
+	// Unlimited until the pair succeeds, then once per second
 	bool TryClaimTriggeredCheck(const ov::SocketAddressPair& address_pair);
 	bool IsActive(const ov::SocketAddressPair& address_pair);
 

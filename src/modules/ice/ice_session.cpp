@@ -290,7 +290,7 @@ bool IceSession::TryClaimTriggeredCheck(const ov::SocketAddressPair& address_pai
 		return true;
 	}
 
-	// Below common peers' check periods (libwebrtc 2.5 s, Firefox ~5 s, pion 2 s)
+	// Shorter than peers' check periods (libwebrtc 2.5 s, Firefox ~5 s, pion 2 s)
 	constexpr int64_t TRIGGERED_CHECK_INTERVAL_MS = 1000;
 	return candidate_pair->TryClaimTriggeredCheck(ov::Time::GetMonotonicTimestamp(), TRIGGERED_CHECK_INTERVAL_MS);
 }
