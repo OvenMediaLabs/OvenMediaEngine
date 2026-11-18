@@ -282,7 +282,7 @@ bool IceSession::IsConnectable(const ov::SocketAddressPair& address_pair)
 	return candidate_pair->IsConnectable();
 }
 
-bool IceSession::ShouldSendTriggeredCheck(const ov::SocketAddressPair& address_pair)
+bool IceSession::TryClaimTriggeredCheck(const ov::SocketAddressPair& address_pair)
 {
 	auto candidate_pair = FindCandidatePair(address_pair);
 	if (candidate_pair == nullptr || candidate_pair->IsConnectable() == false)

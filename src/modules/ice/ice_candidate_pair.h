@@ -49,7 +49,7 @@ public:
 	// Valid candidate pair
 	bool IsConnectable() const;
 
-	// True at most once per interval_ms
+	// True at most once per interval_ms; a true result counts as sent
 	bool TryClaimTriggeredCheck(int64_t now_ms, int64_t interval_ms);
 
 	// Outgoing framing for this pair. Set when TURN ChannelData / Send

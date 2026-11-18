@@ -4,7 +4,7 @@
 //
 //  Covers: IceSession nomination / active-pair selection
 //  (MarkNominated, SelectActiveCandidatePair, IsActive)
-//  and triggered-check rate limiting (ShouldSendTriggeredCheck)
+//  and triggered-check rate limiting (TryClaimTriggeredCheck)
 //
 //==============================================================================
 #include <gtest/gtest.h>
@@ -12,6 +12,7 @@
 #include <base/ovsocket/ovsocket.h>
 #include <modules/sdp/session_description.h>
 
+#include "ice_candidate_pair.h"
 #include "ice_session.h"
 
 namespace
@@ -175,16 +176,16 @@ TEST(IceSessionTriggeredCheck, RateLimitedOnlyAfterSuccess)
 	auto a		 = MakePair(10000, 20000);
 	auto u		 = MakePair(10001, 20001);	 // never seen
 
-	EXPECT_TRUE(session->ShouldSendTriggeredCheck(u));
+	EXPECT_TRUE(session->TryClaimTriggeredCheck(u));
 
 	Validate(session, a);
-	EXPECT_TRUE(session->ShouldSendTriggeredCheck(a));
-	EXPECT_TRUE(session->ShouldSendTriggeredCheck(a));
+	EXPECT_TRUE(session->TryClaimTriggeredCheck(a));
+	EXPECT_TRUE(session->TryClaimTriggeredCheck(a));
 
 	session->OnReceivedStunBindingResponse(a, nullptr);
 	ASSERT_TRUE(session->IsConnectable(a));
-	EXPECT_TRUE(session->ShouldSendTriggeredCheck(a));
-	EXPECT_FALSE(session->ShouldSendTriggeredCheck(a));
+	EXPECT_TRUE(session->TryClaimTriggeredCheck(a));
+	EXPECT_FALSE(session->TryClaimTriggeredCheck(a));
 }
 
 TEST(IceSessionTriggeredCheck, TryClaimTriggeredCheckInterval)
