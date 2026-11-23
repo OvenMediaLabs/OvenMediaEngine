@@ -4,6 +4,7 @@
 //
 //  Covers: IceSession nomination / active-pair selection
 //  (MarkNominated, SelectActiveCandidatePair, IsActive)
+//  and triggered-check rate limiting (TryClaimTriggeredCheck)
 //
 //==============================================================================
 #include <gtest/gtest.h>
@@ -11,6 +12,7 @@
 #include <base/ovsocket/ovsocket.h>
 #include <modules/sdp/session_description.h>
 
+#include "ice_candidate_pair.h"
 #include "ice_session.h"
 
 namespace
@@ -165,4 +167,34 @@ TEST(IceSessionNomination, RejectFailedOrUnknownWhileActive)
 	EXPECT_FALSE(session->SelectActiveCandidatePair(b));
 	EXPECT_TRUE(session->IsActive(a));
 	EXPECT_EQ(session->GetState(), IceConnectionState::Connected);
+}
+
+// Unlimited until the pair succeeds, then rate-limited
+TEST(IceSessionTriggeredCheck, RateLimitedOnlyAfterSuccess)
+{
+	auto session = MakeSession();
+	auto a		 = MakePair(10000, 20000);
+	auto u		 = MakePair(10001, 20001);	 // never seen
+
+	EXPECT_TRUE(session->TryClaimTriggeredCheck(u));
+
+	Validate(session, a);
+	EXPECT_TRUE(session->TryClaimTriggeredCheck(a));
+	EXPECT_TRUE(session->TryClaimTriggeredCheck(a));
+
+	session->OnReceivedStunBindingResponse(a, nullptr);
+	ASSERT_TRUE(session->IsConnectable(a));
+	EXPECT_TRUE(session->TryClaimTriggeredCheck(a));
+	EXPECT_FALSE(session->TryClaimTriggeredCheck(a));
+}
+
+TEST(IceCandidatePairTriggeredCheck, Interval)
+{
+	IceCandidatePair pair(MakePair(10000, 20000), nullptr);
+
+	EXPECT_TRUE(pair.TryClaimTriggeredCheck(/*now_ms=*/5000, /*interval_ms=*/1000));
+	EXPECT_FALSE(pair.TryClaimTriggeredCheck(5000, 1000));
+	EXPECT_FALSE(pair.TryClaimTriggeredCheck(5999, 1000));
+	EXPECT_TRUE(pair.TryClaimTriggeredCheck(6000, 1000));
+	EXPECT_FALSE(pair.TryClaimTriggeredCheck(6500, 1000));
 }

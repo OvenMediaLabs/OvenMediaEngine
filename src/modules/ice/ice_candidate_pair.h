@@ -49,6 +49,9 @@ public:
 	// Valid candidate pair
 	bool IsConnectable() const;
 
+	// True at most once per interval_ms
+	bool TryClaimTriggeredCheck(int64_t now_ms, int64_t interval_ms);
+
 	// Outgoing framing for this pair. Set when TURN ChannelData / Send
 	// Indication is received on this pair; defaults to Direct.
 	void SetTurnDataChannel(uint16_t channel_number);
@@ -68,6 +71,8 @@ private:
 
     bool _received_binding_request = false;
     bool _received_binding_response = false;
+
+	std::atomic<int64_t> _last_triggered_check_ms{-1};
 
 	std::atomic<TransportType> _transport_type{TransportType::Direct};
 	std::atomic<uint16_t> _turn_channel_number{0};
