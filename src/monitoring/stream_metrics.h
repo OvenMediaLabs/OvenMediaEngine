@@ -31,7 +31,7 @@ namespace mon
 			logt("DEBUG", "StreamMetric (%s / %s) Destroyed", GetName().CStr(), GetUUID().CStr());
 		}
 
-		// Returns nullptr once the application metrics have been deleted
+		// Returns `nullptr` once the application metrics have been released
 		std::shared_ptr<ApplicationMetrics> GetApplicationMetrics() const
 		{
 			return _app_metrics.lock();
