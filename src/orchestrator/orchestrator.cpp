@@ -325,8 +325,6 @@ namespace ocst
 
 		logti("Trying to delete an application: [%s] (%u)", app_info.GetVHostAppName().CStr(), app_info.GetId());
 
-		mon::Monitoring::GetInstance()->OnApplicationDeleted(app_info);
-
 		if (vhost->DeleteApplication(app_id) == false)
 		{
 			logte("Could not delete an application: [%s]", app_info.GetVHostAppName().CStr());
@@ -359,6 +357,9 @@ namespace ocst
 				logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
 			}
 		}
+
+		// The modules tear down the application's streams and sessions above, and monitoring needs the application until then
+		mon::Monitoring::GetInstance()->OnApplicationDeleted(app_info);
 
 		return Result::Succeeded;
 	}
