@@ -85,7 +85,7 @@ namespace pub
 			session->Stop();
 		}
 		_sessions.clear();
-		_session_count.store(0, std::memory_order_relaxed);
+		_session_count.store(0);
 		logtt("All sessions(%zu) of %s has been stopped successfully", _sessions.size(), worker_name.CStr());
 
 		return true;
@@ -101,7 +101,7 @@ namespace pub
 
 		std::lock_guard<std::shared_mutex> lock(_session_map_mutex);
 		_sessions[session->GetId()] = session;
-		_session_count.store(_sessions.size(), std::memory_order_relaxed);
+		_session_count.store(_sessions.size());
 
 		return true;
 	}
@@ -129,7 +129,7 @@ namespace pub
 
 		auto session = _sessions[id];
 		_sessions.erase(id);
-		_session_count.store(_sessions.size(), std::memory_order_relaxed);
+		_session_count.store(_sessions.size());
 		lock.unlock();
 
 		session->Stop();
@@ -152,10 +152,12 @@ namespace pub
 
 	void StreamWorker::SendPacket(const std::any &packet)
 	{
-		if (_session_count.load(std::memory_order_relaxed) == 0)
+		// No session to deliver to, so the thread is not woken
+		if (_session_count.load() == 0)
 		{
 			return;
 		}
+
 		_packet_queue.Enqueue(packet);
 		_queue_event.Notify();
 	}
@@ -376,7 +378,7 @@ namespace pub
 				std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
 				workers.swap(_stream_workers);
 				sessions.swap(_sessions);
-				_session_count.store(0, std::memory_order_relaxed);
+				_session_count.store(0);
 			}
 
 			StopWorkersAndSessions(workers, sessions);
@@ -448,7 +450,7 @@ namespace pub
 			std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
 			workers.swap(_stream_workers);
 			sessions.swap(_sessions);
-			_session_count.store(0, std::memory_order_relaxed);
+			_session_count.store(0);
 		}
 
 		OnStopping(sessions);
@@ -610,7 +612,7 @@ namespace pub
 		bool result = (worker != nullptr) ? worker->AddSession(session) : true;
 
 		// Counted only once its worker has it, so a sender that sees the count can deliver to it
-		_session_count.store(_sessions.size(), std::memory_order_release);
+		_session_count.store(_sessions.size());
 
 		return result;
 	}
@@ -630,7 +632,7 @@ namespace pub
 				return false;
 			}
 			_sessions.erase(session_iterator);
-			_session_count.store(_sessions.size(), std::memory_order_release);
+			_session_count.store(_sessions.size());
 
 			if (_worker_count == 0)
 			{
@@ -668,12 +670,12 @@ namespace pub
 
 	uint32_t Stream::GetSessionCount()
 	{
-		return _session_count.load(std::memory_order_acquire);
+		return _session_count.load();
 	}
 
 	bool Stream::BroadcastPacket(const std::any &packet)
 	{
-		if (_session_count.load(std::memory_order_acquire) == 0)
+		if (_session_count.load() == 0)
 		{
 			return true;
 		}
