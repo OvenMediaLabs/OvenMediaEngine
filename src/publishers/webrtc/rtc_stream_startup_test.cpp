@@ -48,8 +48,11 @@ namespace
 		void SetUp() override
 		{
 			auto app = std::make_shared<RtcApplication>(nullptr, TestApplicationInfo::GetInvalidApplication(), nullptr, nullptr);
+			info::Stream stream_info(*app, StreamSourceType::Ovt);
+			// Like every publisher stream in production, it is linked to its input stream
+			stream_info.LinkInputStream(std::make_shared<info::Stream>(*app, StreamSourceType::Ovt));
 			// No workers: BroadcastPacket delivers synchronously to the recording session.
-			stream = RtcStream::Create(app, info::Stream(*app, StreamSourceType::Ovt), 0);
+			stream = RtcStream::Create(app, stream_info, 0);
 			auto video = std::make_shared<MediaTrack>();
 			video->SetId(1);
 			video->SetMediaType(MediaType::Video);
