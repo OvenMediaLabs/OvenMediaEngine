@@ -41,6 +41,7 @@ namespace http
 			private:
 				// Send Settings frame and Window_Update frame
 				bool SendInitialControlMessage();
+				void SendWindowUpdate(uint32_t stream_id, uint32_t increment);
 
 				bool OnEndHeaders();
 				bool OnEndStream();
