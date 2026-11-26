@@ -145,6 +145,12 @@ namespace modules::rtmp
 		while (byte_stream.IsEmpty() == false)
 		{
 			// Read the length of the name (U16)
+			if (byte_stream.IsRemained(sizeof(uint16_t)) == false)
+			{
+				logtt("Failed to read the length of the name");
+				return false;
+			}
+
 			const auto name_length = byte_stream.ReadBE16();
 
 			if (name_length == 0)
