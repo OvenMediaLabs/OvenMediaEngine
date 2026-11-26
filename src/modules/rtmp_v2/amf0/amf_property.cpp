@@ -278,7 +278,7 @@ namespace modules::rtmp
 		return succeeded;
 	}
 
-	bool AmfProperty::Decode(ov::ByteStream &byte_stream, bool decode_marker)
+	bool AmfProperty::Decode(ov::ByteStream &byte_stream, bool decode_marker, size_t depth)
 	{
 		if (decode_marker)
 		{
@@ -295,6 +295,17 @@ namespace modules::rtmp
 			}
 		}
 
+		const auto is_container =
+			(_amf_data_type == AmfTypeMarker::Object) ||
+			(_amf_data_type == AmfTypeMarker::EcmaArray) ||
+			(_amf_data_type == AmfTypeMarker::StrictArray);
+
+		if (is_container && (depth >= MAX_DECODE_DEPTH))
+		{
+			logtw("AMF nesting is deeper than %zu", MAX_DECODE_DEPTH);
+			return false;
+		}
+
 		switch (_amf_data_type)
 		{
 			case AmfTypeMarker::Number:
@@ -309,7 +320,7 @@ namespace modules::rtmp
 			case AmfTypeMarker::Object:
 				OV_SAFE_DELETE(_object);
 				_object = new AmfObject();
-				if (_object->Decode(byte_stream, false))
+				if (_object->Decode(byte_stream, false, depth + 1))
 				{
 					_amf_data_type = AmfTypeMarker::Object;
 					return true;
@@ -326,7 +337,7 @@ namespace modules::rtmp
 			case AmfTypeMarker::EcmaArray:
 				OV_SAFE_DELETE(_ecma_array);
 				_ecma_array = new AmfEcmaArray();
-				if (_ecma_array->Decode(byte_stream, false))
+				if (_ecma_array->Decode(byte_stream, false, depth + 1))
 				{
 					return true;
 				}
@@ -337,7 +348,7 @@ namespace modules::rtmp
 			case AmfTypeMarker::StrictArray:
 				OV_SAFE_DELETE(_strict_array);
 				_strict_array = new AmfStrictArray();
-				if (_strict_array->Decode(byte_stream, false))
+				if (_strict_array->Decode(byte_stream, false, depth + 1))
 				{
 					_amf_data_type = AmfTypeMarker::StrictArray;
 					return true;

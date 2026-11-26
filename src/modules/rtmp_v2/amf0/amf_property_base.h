@@ -17,6 +17,9 @@ namespace modules::rtmp
 	class AmfPropertyBase
 	{
 	public:
+		// Maximum number of containers (object/ECMA array/strict array) that may enclose a value while decoding
+		static constexpr size_t MAX_DECODE_DEPTH = 64;
+
 		AmfPropertyBase(AmfTypeMarker type);
 		// copy ctor
 		AmfPropertyBase(const AmfPropertyBase &other);
@@ -29,7 +32,7 @@ namespace modules::rtmp
 		virtual ~AmfPropertyBase() = default;
 
 		virtual bool Encode(ov::ByteStream &byte_stream, bool encode_marker) const = 0;
-		virtual bool Decode(ov::ByteStream &byte_stream, bool decode_marker) = 0;
+		virtual bool Decode(ov::ByteStream &byte_stream, bool decode_marker, size_t depth = 0) = 0;
 
 		virtual void ToString(ov::String &description, size_t indent = 0) const = 0;
 		virtual ov::String ToString(size_t indent = 0) const = 0;

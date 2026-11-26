@@ -27,7 +27,7 @@ namespace modules::rtmp
 		bool Append(const AmfProperty &property);
 
 		bool Encode(ov::ByteStream &byte_stream, bool encode_marker) const override;
-		bool Decode(ov::ByteStream &byte_stream, bool decode_marker) override;
+		bool Decode(ov::ByteStream &byte_stream, bool decode_marker, size_t depth = 0) override;
 
 		const AmfProperty *GetAt(size_t index) const;
 

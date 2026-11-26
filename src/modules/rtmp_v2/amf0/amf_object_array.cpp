@@ -99,7 +99,7 @@ namespace modules::rtmp
 		return byte_stream.WriteBE16(0) && EncodeMarker(byte_stream, AmfTypeMarker::ObjectEnd);
 	}
 
-	bool AmfObjectArray::Decode(ov::ByteStream &byte_stream, bool decode_marker)
+	bool AmfObjectArray::Decode(ov::ByteStream &byte_stream, bool decode_marker, size_t depth)
 	{
 		// 1. type == AmfTypeMarker::Object
 		//
@@ -174,7 +174,7 @@ namespace modules::rtmp
 
 			// Read the value
 			AmfProperty property;
-			if (property.Decode(byte_stream, true) == false)
+			if (property.Decode(byte_stream, true, depth) == false)
 			{
 				// Could not decode the data
 				logtt("Failed to decode the value");

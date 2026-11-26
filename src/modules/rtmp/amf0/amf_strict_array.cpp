@@ -85,7 +85,7 @@ bool AmfStrictArray::Encode(ov::ByteStream &byte_stream, bool encode_marker) con
 	return true;
 }
 
-bool AmfStrictArray::Decode(ov::ByteStream &byte_stream, bool decode_marker)
+bool AmfStrictArray::Decode(ov::ByteStream &byte_stream, bool decode_marker, size_t depth)
 {
 	if (decode_marker)
 	{
@@ -116,7 +116,7 @@ bool AmfStrictArray::Decode(ov::ByteStream &byte_stream, bool decode_marker)
 	for (size_t index = 0; index < count; ++index)
 	{
 		AmfProperty property;
-		if (property.Decode(byte_stream, true) == false)
+		if (property.Decode(byte_stream, true, depth) == false)
 		{
 			return false;
 		}

@@ -87,7 +87,7 @@ namespace modules::rtmp
 		return true;
 	}
 
-	bool AmfStrictArray::Decode(ov::ByteStream &byte_stream, bool decode_marker)
+	bool AmfStrictArray::Decode(ov::ByteStream &byte_stream, bool decode_marker, size_t depth)
 	{
 		if (decode_marker)
 		{
@@ -118,7 +118,7 @@ namespace modules::rtmp
 		for (size_t index = 0; index < count; ++index)
 		{
 			AmfProperty property;
-			if (property.Decode(byte_stream, true) == false)
+			if (property.Decode(byte_stream, true, depth) == false)
 			{
 				return false;
 			}
