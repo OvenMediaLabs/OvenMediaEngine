@@ -26,7 +26,8 @@ namespace ov
 				return false;
 			}
 
-			return ui32_ip_addr >= _ui32_network_address && ui32_ip_addr <= _ui32_broadcast_address;
+			// All values are in network byte order, so compare under the mask instead of ordering them.
+			return (ui32_ip_addr & _ui32_bitmask) == _ui32_network_address;
 		}
 
 		ov::String Begin()
