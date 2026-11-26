@@ -243,13 +243,35 @@ namespace http
 			// Data frame received
 			bool HttpStream::OnDataFrameReceived(const std::shared_ptr<const Http2DataFrame> &frame)
 			{
+				const bool end_stream = frame->IS_HTTP2_FRAME_FLAG_ON(Http2DataFrame::Flags::EndStream);
+
+				// The peer charges the whole payload, padding included, against both windows (RFC 9113 6.1)
+				const auto consumed = frame->GetLength();
+				if (consumed > 0)
+				{
+					SendWindowUpdate(0, consumed);
+
+					if (end_stream == false)
+					{
+						SendWindowUpdate(_stream_id, consumed);
+					}
+				}
+
 				OnDataReceived(frame->GetData());
-				if (frame->IS_HTTP2_FRAME_FLAG_ON(Http2DataFrame::Flags::EndStream))
+				if (end_stream)
 				{
 					return OnEndStream();
 				}
 
 				return true;
+			}
+
+			void HttpStream::SendWindowUpdate(uint32_t stream_id, uint32_t increment)
+			{
+				auto window_update_frame = std::make_shared<Http2WindowUpdateFrame>(stream_id);
+				window_update_frame->SetWindowSizeIncrement(increment);
+
+				_response->Send(window_update_frame);
 			}
 
 			bool HttpStream::OnPriorityFrameReceived(const std::shared_ptr<const Http2PriorityFrame> &frame)
