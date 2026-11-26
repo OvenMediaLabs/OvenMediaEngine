@@ -7,7 +7,7 @@
 //
 //==============================================================================
 // Covers: StunMessage::Parse() rejection of attributes whose declared length
-// does not fit the attribute type (REQUESTED-TRANSPORT, ERROR-CODE, fixed-size attributes)
+// does not fit the attribute type (REQUESTED-TRANSPORT, ERROR-CODE, fixed-size attributes, XOR addresses)
 #include "stun/stun_message.h"
 
 #include <base/ovlibrary/ovlibrary.h>
@@ -20,6 +20,9 @@ namespace
 	constexpr uint16_t kErrorCode		   = 0x0009;
 	constexpr uint16_t kRequestedTransport = 0x0019;
 	constexpr uint16_t kPriority		   = 0x0024;
+	constexpr uint16_t kXorPeerAddress	   = 0x0012;
+	constexpr uint16_t kXorRelayedAddress  = 0x0016;
+	constexpr uint16_t kXorMappedAddress   = 0x0020;
 
 	void AppendBE16(std::vector<uint8_t> &buffer, uint16_t value)
 	{
@@ -123,4 +126,22 @@ TEST(StunMessageTest, FixedSizeAttributeWithValidLengthIsAccepted)
 TEST(StunMessageTest, FixedSizeAttributeLongerThanValueIsAccepted)
 {
 	EXPECT_TRUE(Parse(MakeMessage(kPriority, 8, {0, 0, 0, 1, 9, 9, 9, 9})));
+}
+
+TEST(StunMessageTest, XorAddressWithInvalidFamilyIsRejected)
+{
+	for (const auto type : {kXorMappedAddress, kXorPeerAddress, kXorRelayedAddress})
+	{
+		EXPECT_FALSE(Parse(MakeMessage(type, 8, std::vector<uint8_t>(8, 0)))) << "type: " << type;
+	}
+}
+
+TEST(StunMessageTest, XorAddressWithValidFamilyIsAccepted)
+{
+	EXPECT_TRUE(Parse(MakeMessage(kXorMappedAddress, 8, {0, 1, 0x11, 0x2B, 0xE1, 0x12, 0xA4, 0x43})));
+}
+
+TEST(StunMessageTest, XorAddressLongerThanValueIsAccepted)
+{
+	EXPECT_TRUE(Parse(MakeMessage(kXorMappedAddress, 12, {0, 1, 0x11, 0x2B, 0xE1, 0x12, 0xA4, 0x43, 9, 9, 9, 9})));
 }
