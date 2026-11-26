@@ -32,7 +32,13 @@ bool StunRequestedTransportAttribute::Parse(const StunMessage *stun_message, ov:
 	|    Protocol   |                    RFFU                       |
 	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 	*/
-	// 4 bytes	
+
+	// 4 bytes
+	if ((_length < sizeof(uint32_t)) || (stream.IsRemained(sizeof(uint32_t)) == false))
+	{
+		return false;
+	}
+
 	_protocol_number = stream.Read8();
 	
 	// The RFFU field MUST be set to zero on transmission and MUST be ignored on reception. 

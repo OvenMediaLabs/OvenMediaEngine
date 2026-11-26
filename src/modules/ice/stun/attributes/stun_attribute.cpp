@@ -96,15 +96,27 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage 
 	}
 	else
 	{
-		if(attribute->Parse(stun_message, stream) == false)
+		const auto attribute_offset = stream.GetOffset();
+
+		if (attribute->Parse(stun_message, stream) == false)
 		{
 			logtw("Could not parse attribute: type: 0x%04X, length: %d", static_cast<uint16_t>(type), length);
 			return nullptr;
 		}
 
+		// A value must not be read beyond the declared length. Declared bytes left unread are ignored.
+		const auto consumed = static_cast<size_t>(stream.GetOffset() - attribute_offset);
+
+		if (consumed > length)
+		{
+			logtw("Attribute is shorter than its value: type: 0x%04X, length: %d, consumed: %zu", static_cast<uint16_t>(type), length, consumed);
+			return nullptr;
+		}
+
 		logtt("Parsed: %s", attribute->ToString().CStr());
 
-		stream.Skip<uint8_t>(padded_length - length);
+		// The next attribute starts right after the declared length (with padding).
+		stream.Skip<uint8_t>(padded_length - consumed);
 	}
 
 	return attribute;
