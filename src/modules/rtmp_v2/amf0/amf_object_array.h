@@ -33,7 +33,7 @@ namespace modules::rtmp
 		bool Append(const char *name, const AmfProperty &property);
 
 		bool Encode(ov::ByteStream &byte_stream, bool encode_marker) const override;
-		bool Decode(ov::ByteStream &byte_stream, bool decode_marker) override;
+		bool Decode(ov::ByteStream &byte_stream, bool decode_marker, size_t depth = 0) override;
 
 		const AmfPropertyPair *GetPair(const char *name) const;
 		const AmfPropertyPair *GetPair(const char *name, AmfTypeMarker expected_type) const;
