@@ -104,19 +104,18 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage 
 			return nullptr;
 		}
 
-		// A value must not be read beyond the declared length. Declared bytes left unread are ignored.
+		// An attribute must consume exactly its declared length.
 		const auto consumed = static_cast<size_t>(stream.GetOffset() - attribute_offset);
 
-		if (consumed > length)
+		if (consumed != length)
 		{
-			logtw("Attribute is shorter than its value: type: 0x%04X, length: %d, consumed: %zu", static_cast<uint16_t>(type), length, consumed);
+			logtw("Attribute length mismatch: type: 0x%04X, length: %d, consumed: %zu", static_cast<uint16_t>(type), length, consumed);
 			return nullptr;
 		}
 
 		logtt("Parsed: %s", attribute->ToString().CStr());
 
-		// The next attribute starts right after the declared length (with padding).
-		stream.Skip<uint8_t>(padded_length - consumed);
+		stream.Skip<uint8_t>(padded_length - length);
 	}
 
 	return attribute;

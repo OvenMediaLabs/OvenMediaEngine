@@ -10,37 +10,37 @@
 // does not fit the attribute type (REQUESTED-TRANSPORT, ERROR-CODE, fixed-size attributes, XOR addresses)
 #include "stun/stun_message.h"
 
-#include "stun/attributes/stun_attributes.h"
-
 #include <base/ovlibrary/ovlibrary.h>
 #include <gtest/gtest.h>
+
+#include "stun/attributes/stun_attributes.h"
 
 namespace
 {
 	// STUN message type used as the carrier of every test attribute (Allocate request).
-	constexpr uint16_t ALLOCATE_REQUEST = 0x0003;
+	constexpr uint16_t ALLOCATE_REQUEST	   = 0x0003;
 	// Attribute type MESSAGE-INTEGRITY (fixed 20-byte value).
-	constexpr uint16_t MESSAGE_INTEGRITY = 0x0008;
+	constexpr uint16_t MESSAGE_INTEGRITY   = 0x0008;
 	// Attribute type ERROR-CODE (4 fixed bytes, then the reason phrase).
-	constexpr uint16_t ERROR_CODE = 0x0009;
+	constexpr uint16_t ERROR_CODE		   = 0x0009;
 	// Attribute type XOR-PEER-ADDRESS.
-	constexpr uint16_t XOR_PEER_ADDRESS = 0x0012;
+	constexpr uint16_t XOR_PEER_ADDRESS	   = 0x0012;
 	// Attribute type XOR-RELAYED-ADDRESS.
 	constexpr uint16_t XOR_RELAYED_ADDRESS = 0x0016;
 	// Attribute type REQUESTED-TRANSPORT (fixed 4-byte value).
 	constexpr uint16_t REQUESTED_TRANSPORT = 0x0019;
 	// Attribute type XOR-MAPPED-ADDRESS.
-	constexpr uint16_t XOR_MAPPED_ADDRESS = 0x0020;
+	constexpr uint16_t XOR_MAPPED_ADDRESS  = 0x0020;
 	// Attribute type PRIORITY (fixed 4-byte value).
-	constexpr uint16_t PRIORITY = 0x0024;
+	constexpr uint16_t PRIORITY			   = 0x0024;
 	// Attribute type USERNAME (variable-length text).
-	constexpr uint16_t USER_NAME = 0x0006;
+	constexpr uint16_t USER_NAME		   = 0x0006;
 	// Attribute type REALM (variable-length text).
-	constexpr uint16_t REALM = 0x0014;
+	constexpr uint16_t REALM			   = 0x0014;
 	// Attribute type NONCE (variable-length text).
 	constexpr uint16_t NONCE			   = 0x0015;
 	// Attribute type SOFTWARE (variable-length text).
-	constexpr uint16_t SOFTWARE = 0x8022;
+	constexpr uint16_t SOFTWARE			   = 0x8022;
 
 	void AppendBE16(std::vector<uint8_t> &buffer, uint16_t value)
 	{
@@ -144,9 +144,9 @@ TEST(StunMessageTest, ErrorCodeWithoutReasonIsAccepted)
 	EXPECT_TRUE(Parse(MakeMessage(ERROR_CODE, 4, {0, 0, 4, 1})));
 }
 
-TEST(StunMessageTest, RequestedTransportLongerThanValueIsAccepted)
+TEST(StunMessageTest, RequestedTransportLongerThanValueIsRejected)
 {
-	EXPECT_TRUE(Parse(MakeMessage(REQUESTED_TRANSPORT, 8, {17, 0, 0, 0, 1, 2, 3, 4})));
+	EXPECT_FALSE(Parse(MakeMessage(REQUESTED_TRANSPORT, 8, {17, 0, 0, 0, 1, 2, 3, 4})));
 }
 
 TEST(StunMessageTest, ErrorCodeWithPaddedReasonIsAccepted)
@@ -166,9 +166,9 @@ TEST(StunMessageTest, FixedSizeAttributeWithValidLengthIsAccepted)
 	EXPECT_TRUE(Parse(MakeMessage(MESSAGE_INTEGRITY, 20, std::vector<uint8_t>(20, 0))));
 }
 
-TEST(StunMessageTest, FixedSizeAttributeLongerThanValueIsAccepted)
+TEST(StunMessageTest, FixedSizeAttributeLongerThanValueIsRejected)
 {
-	EXPECT_TRUE(Parse(MakeMessage(PRIORITY, 8, {0, 0, 0, 1, 9, 9, 9, 9})));
+	EXPECT_FALSE(Parse(MakeMessage(PRIORITY, 8, {0, 0, 0, 1, 9, 9, 9, 9})));
 }
 
 TEST(StunMessageTest, XorAddressWithInvalidFamilyIsRejected)
@@ -184,9 +184,9 @@ TEST(StunMessageTest, XorAddressWithValidFamilyIsAccepted)
 	EXPECT_TRUE(Parse(MakeMessage(XOR_MAPPED_ADDRESS, 8, {0, 1, 0x11, 0x2B, 0xE1, 0x12, 0xA4, 0x43})));
 }
 
-TEST(StunMessageTest, XorAddressLongerThanValueIsAccepted)
+TEST(StunMessageTest, XorAddressLongerThanValueIsRejected)
 {
-	EXPECT_TRUE(Parse(MakeMessage(XOR_MAPPED_ADDRESS, 12, {0, 1, 0x11, 0x2B, 0xE1, 0x12, 0xA4, 0x43, 9, 9, 9, 9})));
+	EXPECT_FALSE(Parse(MakeMessage(XOR_MAPPED_ADDRESS, 12, {0, 1, 0x11, 0x2B, 0xE1, 0x12, 0xA4, 0x43, 9, 9, 9, 9})));
 }
 
 TEST(StunMessageTest, EmptyTextAttributesAreAccepted)
@@ -208,11 +208,11 @@ TEST(StunMessageTest, TextAttributeKeepsItsValue)
 	EXPECT_STREQ(user_name->GetValue().CStr(), "abcde");
 }
 
-TEST(StunMessageTest, NextAttributeStartsAfterOversizedAttribute)
+TEST(StunMessageTest, NextAttributeStartsAfterFixedSizeAttribute)
 {
 	StunMessage message;
 
-	ASSERT_TRUE(Parse(MakeMessage({{PRIORITY, 8, {0, 0, 0, 1, 9, 9, 9, 9}},
+	ASSERT_TRUE(Parse(MakeMessage({{PRIORITY, 4, {0, 0, 0, 1}},
 								   {USER_NAME, 4, {'a', 'b', 'c', 'd'}}}),
 					  message));
 
