@@ -75,7 +75,6 @@ namespace pub
 
 		std::shared_ptr<const SrtPlaylist> _srt_playlist;
 
-		bool _need_to_send_psi = true;
 		[[maybe_unused]] bool _is_keyframe_sent = false;
 
 		std::shared_ptr<const ov::Url> _requested_url;

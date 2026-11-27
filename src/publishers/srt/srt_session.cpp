@@ -125,12 +125,6 @@ namespace pub
 
 		std::shared_ptr<const ov::Data> mpegts_data;
 
-		if (_need_to_send_psi)
-		{
-			_need_to_send_psi = false;
-			_connector->Send(playlist->GetPsiData());
-		}
-
 		mpegts_data = srt_data->data;
 
 		if (mpegts_data == nullptr)
