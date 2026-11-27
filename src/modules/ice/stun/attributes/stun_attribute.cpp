@@ -56,18 +56,18 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage 
 
 	StunAttributeType type = static_cast<StunAttributeType>(stream.ReadBE16());
 	uint16_t length = stream.ReadBE16();
-	auto padded_length = static_cast<uint16_t>(((length % 4) > 0) ? ((length / 4) + 1) * 4 : length);
+	const auto padded_length = (static_cast<size_t>(length) + 3) & ~static_cast<size_t>(3);
 
 	if(stream.Remained() < padded_length)
 	{
-		logtw("Data is too short: type: 0x%04X, data length: %zu (expected: %d)", static_cast<uint16_t>(type), stream.Remained(), padded_length);
+		logtw("Data is too short: type: 0x%04X, data length: %zu (expected: %zu)", static_cast<uint16_t>(type), stream.Remained(), padded_length);
 		return nullptr;
 	}
 
 #if STUN_LOG_DATA
-	logtt("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...\n%s", type, length, padded_length, stream.Dump(padded_length).CStr());
+	logtt("Parsing attribute: type: 0x%04X, length: %d (padded: %zu)...\n%s", type, length, padded_length, stream.Dump(padded_length).CStr());
 #else // STUN_LOG_DATA
-	logtt("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...", static_cast<uint16_t>(type), length, padded_length);
+	logtt("Parsing attribute: type: 0x%04X, length: %d (padded: %zu)...", static_cast<uint16_t>(type), length, padded_length);
 #endif // STUN_LOG_DATA
 
 #if DEBUG
@@ -96,9 +96,20 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage 
 	}
 	else
 	{
-		if(attribute->Parse(stun_message, stream) == false)
+		const auto attribute_offset = stream.GetOffset();
+
+		if (attribute->Parse(stun_message, stream) == false)
 		{
 			logtw("Could not parse attribute: type: 0x%04X, length: %d", static_cast<uint16_t>(type), length);
+			return nullptr;
+		}
+
+		// An attribute must consume exactly its declared length.
+		const auto consumed = static_cast<size_t>(stream.GetOffset() - attribute_offset);
+
+		if (consumed != length)
+		{
+			logtw("Attribute length mismatch: type: 0x%04X, length: %d, consumed: %zu", static_cast<uint16_t>(type), length, consumed);
 			return nullptr;
 		}
 

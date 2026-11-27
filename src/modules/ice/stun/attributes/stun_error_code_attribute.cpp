@@ -36,15 +36,26 @@ bool StunErrorCodeAttribute::Parse(const StunMessage *stun_message, ov::ByteStre
                  Figure 7: Format of ERROR-CODE Attribute
 	*/
 
-	stream.Skip<uint16_t>(1);
-	auto error_class = stream.Read8();
-	auto error_number = stream.Read8();
+	// Reserved (2B) + Class (1B) + Number (1B), then the reason phrase
+	if ((_length < sizeof(uint32_t)) || (stream.IsRemained(_length) == false))
+	{
+		return false;
+	}
 
-	_code = static_cast<StunErrorCode>(error_class*100 + error_number);
-	
-	auto reason_length = _length - sizeof(uint32_t);
+	stream.Skip<uint16_t>(1);
+	auto error_class		 = stream.Read8();
+	auto error_number		 = stream.Read8();
+
+	_code					 = static_cast<StunErrorCode>(error_class * 100 + error_number);
+
+	const auto reason_length = _length - sizeof(uint32_t);
+	if (reason_length == 0)
+	{
+		return true;
+	}
+
 	_reason.SetLength(reason_length);
-	
+
 	return stream.Read<uint8_t>((uint8_t *)(_reason.GetBuffer()), reason_length) == reason_length;
 }
 

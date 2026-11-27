@@ -109,9 +109,11 @@ bool StunXorAddressAttributeFormat::Parse(const StunMessage *stun_message, ov::B
 
 		_address.UpdateFromStorage();
 		_address.SetHostname(_address.GetIpAddress());
+
+		return true;
 	}
 
-	return true;
+	return false;
 }
 
 bool StunXorAddressAttributeFormat::SerializeXoredAddress(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept
