@@ -15,6 +15,11 @@ class StunTextAttributeFormat : public StunAttribute
 public:
 	bool Parse(const StunMessage *stun_message, ov::ByteStream &stream) override
 	{
+		if(_length == 0)
+		{
+			return true;
+		}
+
 		_text.SetLength(_length);
 		return stream.Read<uint8_t>((uint8_t *)(_text.GetBuffer()), _length) == _length;
 	}

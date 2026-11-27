@@ -35,6 +35,12 @@ namespace
 	constexpr uint16_t PRIORITY = 0x0024;
 	// Attribute type USERNAME (variable-length text).
 	constexpr uint16_t USER_NAME = 0x0006;
+	// Attribute type REALM (variable-length text).
+	constexpr uint16_t REALM = 0x0014;
+	// Attribute type NONCE (variable-length text).
+	constexpr uint16_t NONCE			   = 0x0015;
+	// Attribute type SOFTWARE (variable-length text).
+	constexpr uint16_t SOFTWARE = 0x8022;
 
 	void AppendBE16(std::vector<uint8_t> &buffer, uint16_t value)
 	{
@@ -181,6 +187,14 @@ TEST(StunMessageTest, XorAddressWithValidFamilyIsAccepted)
 TEST(StunMessageTest, XorAddressLongerThanValueIsAccepted)
 {
 	EXPECT_TRUE(Parse(MakeMessage(XOR_MAPPED_ADDRESS, 12, {0, 1, 0x11, 0x2B, 0xE1, 0x12, 0xA4, 0x43, 9, 9, 9, 9})));
+}
+
+TEST(StunMessageTest, EmptyTextAttributesAreAccepted)
+{
+	for (const auto type : {USER_NAME, REALM, NONCE, SOFTWARE})
+	{
+		EXPECT_TRUE(Parse(MakeMessage(type, 0, {}))) << "type: " << type;
+	}
 }
 
 TEST(StunMessageTest, TextAttributeKeepsItsValue)
