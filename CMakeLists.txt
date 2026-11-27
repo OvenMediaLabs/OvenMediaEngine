@@ -9,10 +9,12 @@ if(OME_USE_CLANG)
     find_program(_OME_CLANG   NAMES clang)
     find_program(_OME_CLANGXX NAMES clang++)
     if(_OME_CLANG AND _OME_CLANGXX)
-        set(CMAKE_C_COMPILER   "${_OME_CLANG}"   CACHE STRING "C compiler"   FORCE)
-        set(CMAKE_CXX_COMPILER "${_OME_CLANGXX}" CACHE STRING "C++ compiler" FORCE)
+        # Deliberately not FORCE: changing a cached compiler on a re-configure makes
+        # CMake wipe the cache, discarding every other -D setting with it.
+        set(CMAKE_C_COMPILER   "${_OME_CLANG}"   CACHE STRING "C compiler")
+        set(CMAKE_CXX_COMPILER "${_OME_CLANGXX}" CACHE STRING "C++ compiler")
     else()
-        message(WARNING "[OME] OME_USE_CLANG=ON but clang/clang++ not found - falling back to default compiler")
+        message(WARNING "[OME] OME_USE_CLANG=ON but clang/clang++ not found - falling back to the default compiler. This build directory keeps it even after clang is installed; use a fresh build directory to switch.")
     endif()
 endif()
 
@@ -81,7 +83,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 # Build type - normalize to canonical case (Debug/Release) so comparisons work
 # regardless of how the user typed it (debug, DEBUG, release, RELEASE, etc.)
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type (Debug/Release)" FORCE)
+    # Default to Release when no build type is set.
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type (Debug/Release)" FORCE)
 else()
     string(TOUPPER "${CMAKE_BUILD_TYPE}" _BUILD_TYPE_UPPER)
     if(_BUILD_TYPE_UPPER STREQUAL "DEBUG")
