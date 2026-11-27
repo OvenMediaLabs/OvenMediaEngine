@@ -86,6 +86,21 @@ namespace ov
 		return static_cast<int>(static_cast<uint32_t>(key));
 	}
 
+	static epoll_event MakeEpollEvent(int native_handle, socket_id_t socket_id, bool need_writable_event)
+	{
+		epoll_event event{};
+
+		event.events   = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLET;
+		event.data.u64 = MakeEventKey(native_handle, socket_id);
+
+		if (need_writable_event)
+		{
+			event.events |= EPOLLOUT;
+		}
+
+		return event;
+	}
+
 	SocketPoolWorker::SocketPoolWorker(PrivateToken token, const std::shared_ptr<SocketPool> &pool)
 		: _pool(pool),
 		  _max_events(pool->IsThreadPerSocket() ? THREAD_PER_SOCKET_MAX_EVENTS : EpollMaxEvents),
@@ -543,6 +558,11 @@ namespace ov
 								switch (event_callback->OnDataWritableEvent())
 								{
 									case PostProcessMethod::Nothing:
+										// Not with `EPOLLIN`: changing the registration reports unread data a second time
+										if ((GetType() == SocketType::Udp) && (OV_CHECK_FLAG(events, EPOLLIN) == false))
+										{
+											socket->DisableWritableEventIfIdle();
+										}
 										break;
 
 									case PostProcessMethod::GarbageCollection:
@@ -712,17 +732,7 @@ namespace ov
 				{
 					case SocketType::Tcp:
 					case SocketType::Udp: {
-						epoll_event event{};
-
-						// EPOLLIN: input event
-						// EPOLLOUT: output event
-						// EPOLLERR: error event
-						// EPOLLHUP: hang up
-						// EPOLLPRI: for urgent data (OOB)
-						// EPOLLRDHUP : Disconnected or half-closing
-						// EPOLLET: Edge trigger
-						event.events   = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLET;
-						event.data.u64 = MakeEventKey(native_handle, socket->GetId());
+						auto event = MakeEpollEvent(native_handle, socket->GetId(), true);
 
 						if (::epoll_ctl(_epoll, EPOLL_CTL_ADD, native_handle, &event) == -1)
 						{
@@ -758,6 +768,27 @@ namespace ov
 		}
 
 		return (error == nullptr);
+	}
+
+	void SocketPoolWorker::ModifyEpoll(const std::shared_ptr<Socket> &socket, bool need_writable_event)
+	{
+		auto native_handle = socket->GetNativeHandle();
+		auto event		   = MakeEpollEvent(native_handle, socket->GetId(), need_writable_event);
+		std::shared_ptr<Error> error;
+
+		{
+			LockGuard lock(_epoll_mutex);
+
+			if ((_stopped == false) && (::epoll_ctl(_epoll, EPOLL_CTL_MOD, native_handle, &event) == -1))
+			{
+				error = Error::CreateErrorFromErrno();
+			}
+		}
+
+		if (error != nullptr)
+		{
+			logae("Could not modify epoll for socket " OV_SOCKET_TOKEN_FORMAT " (error: %s)", OV_SOCKET_TOKEN_VALUE(socket), error->What());
+		}
 	}
 
 	int SocketPoolWorker::EpollWait(int timeout_msec)
