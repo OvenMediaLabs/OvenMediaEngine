@@ -61,7 +61,7 @@ sudo dnf install -y gcc-c++ make autoconf libtool bzip2 zlib-devel tcl cmake \
 
 ```bash title="Install OpenSSL"
 PREFIX=/opt/ovenmediaengine && \
-OPENSSL_VERSION=3.0.7 && \
+OPENSSL_VERSION=3.5.9 && \
 DIR=/tmp/openssl && \
 mkdir -p ${DIR} && \
 cd ${DIR} && \
