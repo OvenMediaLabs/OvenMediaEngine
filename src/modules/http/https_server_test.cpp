@@ -68,6 +68,7 @@ TEST(HttpsServer, NegotiatesTls12EcdheWithAnEcdsaCertificate)
 		auto kx = ::SSL_CIPHER_get_kx_nid(cipher);
 		// TLS 1.3 suites report NID_kx_any; the cipher list applies to TLS 1.2 only
 		EXPECT_TRUE((kx == NID_kx_ecdhe) || (kx == NID_kx_any)) << ::SSL_CIPHER_get_name(cipher);
+		EXPECT_EQ(::SSL_CIPHER_is_aead(cipher), 1) << ::SSL_CIPHER_get_name(cipher);
 	}
 
 	auto client_ctx = ::SSL_CTX_new(::TLS_client_method());
